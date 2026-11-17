@@ -1330,6 +1330,10 @@ function ordenarTramos(){
     if(a.fecha > b.fecha) return 1;
     return a.progIni - b.progIni;
   });
+  // Después de agregar, editar, eliminar o cargar jornadas, mostrar siempre
+  // el orden cronológico (fecha más antigua primero).
+  ordenActual.campo = "num";
+  ordenActual.asc = true;
   tramos.forEach(function(t,i){ t.num = i+1; });
   recalcularAcumulados();
 }
