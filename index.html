@@ -2128,7 +2128,9 @@ function recolectarEstado(){
         sellador: t.sellador, losaTipo: t.losaTipo,
         ancho: t.ancho, via: t.via, obs: t.obs, fecha: t.fecha,
         longTransv: t.longTransv, longLong: t.longLong, longTotal: t.longTotal,
-        monto: t.monto, m3: t.m3 || 0, litros: t.litros || 0
+        nTransv: t.nTransv || 0, nLong: t.nLong || 0,
+        monto: t.monto, m3: t.m3 || 0, litros: t.litros || 0,
+        longAcum: t.longAcum || 0, montoAcum: t.montoAcum || 0
       };
     })
   };
@@ -2161,31 +2163,35 @@ function abrirProyecto(){
 }
 
 function cargarEstado(data, silencioso){
-  if(!data || typeof data !== "object"){
+  if(!data || typeof data !== "object" || Array.isArray(data)){
     if(!silencioso) mostrarError("El archivo no contiene datos válidos.");
     return false;
   }
+
+  // 1. Restaurar primero la configuración general de la obra.
   if(data.obra){
-    $("nombreObra").value = data.obra.nombre || "Oruro-Challapata";
-    $("progIniGlobal").value = data.obra.progIniGlobal || "235+266";
-    $("progFinGlobal").value = data.obra.progFinGlobal || "256+612";
-    $("profundidadMm").value = data.obra.profundidadMm || "6";
-    $("anchoCorteMm").value = data.obra.anchoCorteMm || "6";
-    $("precioUnit").value = data.obra.precioUnit || "22.89";
-    $("volTotalItem").value = data.obra.volTotalItem || "262908";
-    $("anchoMaxEscala").value = data.obra.anchoMaxEscala || "10";
-    $("fechaInicioObra").value = data.obra.fechaInicioObra || "2024-11-16";
-    $("fechaFinObra").value = data.obra.fechaFinObra || "2027-01-01";
+    var o = data.obra;
+    $("nombreObra").value = o.nombre != null ? o.nombre : "Oruro-Challapata";
+    $("progIniGlobal").value = o.progIniGlobal != null ? o.progIniGlobal : "235+266";
+    $("progFinGlobal").value = o.progFinGlobal != null ? o.progFinGlobal : "256+612";
+    $("profundidadMm").value = o.profundidadMm != null ? o.profundidadMm : "6";
+    $("anchoCorteMm").value = o.anchoCorteMm != null ? o.anchoCorteMm : "6";
+    $("precioUnit").value = o.precioUnit != null ? o.precioUnit : "22.89";
+    $("volTotalItem").value = o.volTotalItem != null ? o.volTotalItem : "262908";
+    $("anchoMaxEscala").value = o.anchoMaxEscala != null ? o.anchoMaxEscala : "10";
+    $("fechaInicioObra").value = o.fechaInicioObra != null ? o.fechaInicioObra : "2024-11-16";
+    $("fechaFinObra").value = o.fechaFinObra != null ? o.fechaFinObra : "2027-01-01";
   }
-  
+
   selladores = [];
   if(Array.isArray(data.selladores)){
     selladores = data.selladores.map(function(s){
+      var g = Number(s.gravedad);
       return {
         nombre: s.nombre || "",
         tipo: s.tipo || "Otro",
         color: s.color || "#004B87",
-        gravedad: (Number.isFinite(parseFloat(s.gravedad)) && parseFloat(s.gravedad) > 0) ? parseFloat(s.gravedad) : null
+        gravedad: Number.isFinite(g) && g > 0 ? g : null
       };
     });
   } else if(Array.isArray(data.trabajos)){
@@ -2198,15 +2204,15 @@ function cargarEstado(data, silencioso){
       };
     });
   }
-  
+
   tiposLosa = [];
   if(Array.isArray(data.tiposLosa)){
     tiposLosa = data.tiposLosa.map(function(m){
       return {
-        id: m.id || Date.now()+Math.random(),
+        id: m.id != null ? m.id : Date.now()+Math.random(),
         codigo: m.codigo || "",
-        ancho: parseFloat(m.ancho) || 0,
-        largoRef: parseFloat(m.largoRef) || 9,
+        ancho: Number.isFinite(Number(m.ancho)) ? Number(m.ancho) : 0,
+        largoRef: Number.isFinite(Number(m.largoRef)) && Number(m.largoRef) > 0 ? Number(m.largoRef) : 9,
         distanciasLong: Array.isArray(m.distanciasLong) ? m.distanciasLong.slice() : [2,2,2,2],
         distanciasTransv: Array.isArray(m.distanciasTransv) ? m.distanciasTransv.slice() : [3,3,3],
         lineasTransv: Array.isArray(m.lineasTransv) ? m.lineasTransv.slice() : new Array(4).fill(true),
@@ -2215,30 +2221,60 @@ function cargarEstado(data, silencioso){
       };
     });
   }
-  
+
+  // La geometría debe estar cargada antes de reconstruir o recalcular tramos.
+  leerEstado();
+
   tramos = [];
   if(Array.isArray(data.tramos)){
     tramos = data.tramos.map(function(t){
-      var sell = t.sellador || t.trabajo || "";
-      if(!sell && t.sellante){
-        sell = t.sellante;
-        if(!selladores.some(function(x){ return x.nombre === sell; })){
-          selladores.push({ nombre: sell, tipo: "Otro", color: "#546e7a", gravedad: null });
-        }
+      var sell = t.sellador || t.trabajo || t.sellante || "";
+      if(sell && !selladores.some(function(x){ return x.nombre === sell; })){
+        selladores.push({ nombre:sell, tipo:"Otro", color:"#546e7a", gravedad:null });
       }
-      return {
-        num: t.num || 0, progIni: parseFloat(t.progIni) || 0, progFin: parseFloat(t.progFin) || 0,
-        dist: parseFloat(t.dist) || 0,
-        sellador: sell, losaTipo: t.losaTipo || "",
-        ancho: parseFloat(t.ancho) || 0,
-        via: t.via || "IZQUIERDA", obs: t.obs || "INTERNA", fecha: t.fecha || "",
-        nTransv: 0, longTransv: 0, nLong: 0, longLong: 0, longTotal: 0,
-        monto: 0, m3: 0, litros: 0, longAcum: 0
+
+      var tramo = {
+        num: Number.isFinite(Number(t.num)) ? Number(t.num) : 0,
+        progIni: Number.isFinite(Number(t.progIni)) ? Number(t.progIni) : 0,
+        progFin: Number.isFinite(Number(t.progFin)) ? Number(t.progFin) : 0,
+        dist: Number.isFinite(Number(t.dist)) ? Number(t.dist) : 0,
+        sellador: sell,
+        losaTipo: t.losaTipo || "",
+        ancho: Number.isFinite(Number(t.ancho)) ? Number(t.ancho) : 0,
+        via: t.via || "IZQUIERDA",
+        obs: t.obs || "INTERNA",
+        fecha: t.fecha || "",
+        nTransv: 0, longTransv: 0, nLong: 0, longLong: 0,
+        longTotal: 0, monto: 0, m3: 0, litros: 0,
+        longAcum: 0, montoAcum: 0
       };
+
+      // Recuperar los cálculos guardados. La versión anterior los reemplazaba
+      // incondicionalmente por cero, aunque el JSON sí contenía sus valores.
+      var camposCalculo = ["longTransv","longLong","longTotal","monto","m3","litros"];
+      var calculosGuardadosCompletos = camposCalculo.every(function(campo){
+        return t[campo] !== undefined && t[campo] !== null && Number.isFinite(Number(t[campo]));
+      });
+
+      if(calculosGuardadosCompletos){
+        tramo.longTransv = Number(t.longTransv);
+        tramo.longLong = Number(t.longLong);
+        tramo.longTotal = Number(t.longTotal);
+        tramo.monto = Number(t.monto);
+        tramo.m3 = Number(t.m3);
+        tramo.litros = Number(t.litros);
+        // Los conteos se derivan de la plantilla y no alteran los metrados guardados.
+        var metradoBase = calcularMetradoTramo(tramo);
+        tramo.nTransv = metradoBase.nTransvActivas;
+        tramo.nLong = metradoBase.nLongActivas;
+      } else {
+        // Compatibilidad con JSON antiguos que no almacenaban todos los cálculos.
+        recalcularTramo(tramo);
+      }
+      return tramo;
     });
   }
-  
-  leerEstado();
+
   ordenarTramos();
   renderSelladores();
   renderTiposLosa();
@@ -2373,11 +2409,12 @@ document.addEventListener("DOMContentLoaded", function(){
       reader.onload = function(e){
         try {
           var data = JSON.parse(e.target.result);
-          cargarEstado(data, false);
-          var ind = $("indicadorGuardado");
-          $("textoGuardado").textContent = "Cargado: " + f.name;
-          ind.classList.add("visible");
-          setTimeout(function(){ ind.classList.remove("visible"); }, 4000);
+          if(cargarEstado(data, false)){
+            var ind = $("indicadorGuardado");
+            $("textoGuardado").textContent = "Cargado: " + f.name;
+            ind.classList.add("visible");
+            setTimeout(function(){ ind.classList.remove("visible"); }, 4000);
+          }
         } catch(err){
           mostrarError("Archivo JSON inválido: " + err.message);
         }
