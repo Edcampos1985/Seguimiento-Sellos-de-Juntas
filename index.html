@@ -915,54 +915,71 @@ function actualizarSumaDist(){
   }
 }
 
+// ---------------------------------------------------------
+// VISTA PREVIA CON PROPORCIONES CORREGIDAS
+// ---------------------------------------------------------
 function dibujarPreviewLosa(){
   var svg = $("losaPreviewSvg");
   if(!svg) return;
   
   var W = 400, H = 300;
   var margen = {top: 30, right: 30, bottom: 30, left: 30};
-  var pW = W - margen.left - margen.right;
-  var pH = H - margen.top - margen.bottom;
+  var areaW = W - margen.left - margen.right;   // 340
+  var areaH = H - margen.top - margen.bottom;   // 240
   
-  var a = previewState.ancho;
-  var l = previewState.largo;
+  var a = previewState.ancho;   // ancho real (m)
+  var l = previewState.largo;   // largo real (m)
+  if(!Number.isFinite(a) || a<=0) a = 1;
+  if(!Number.isFinite(l) || l<=0) l = 1;
+  
+  // === CLAVE: calcular el rectángulo respetando la proporción ancho:largo ===
+  var escala = Math.min(areaW / a, areaH / l);
+  var pW = a * escala;   // ancho dibujado (px)
+  var pH = l * escala;   // alto dibujado (px)
+  
+  // Centrar el rectángulo dentro del área disponible
+  var offsetX = margen.left + (areaW - pW) / 2;
+  var offsetY = margen.top  + (areaH - pH) / 2;
   
   var sumaL = previewState.distanciasLong.reduce(function(a,b){return a+b;},0) || 1;
   var sumaT = previewState.distanciasTransv.reduce(function(a,b){return a+b;},0) || 1;
   
   var html = '';
   
-  html += '<rect x="'+margen.left+'" y="'+margen.top+'" width="'+pW+'" height="'+pH+'" fill="#f0f7f2" stroke="#90a4ae" stroke-width="1.5" rx="3"/>';
+  html += '<rect x="'+offsetX+'" y="'+offsetY+'" width="'+pW+'" height="'+pH+'" fill="#f0f7f2" stroke="#90a4ae" stroke-width="1.5" rx="3"/>';
   
-  html += '<text x="'+(margen.left+pW/2)+'" y="'+(margen.top-10)+'" text-anchor="middle" font-size="11" font-weight="bold" fill="#004B87">'+fmt(a,2)+' m</text>';
-  html += '<text x="'+(margen.left-15)+'" y="'+(margen.top+pH/2)+'" text-anchor="middle" font-size="11" font-weight="bold" fill="#004B87" transform="rotate(-90 '+(margen.left-15)+' '+(margen.top+pH/2)+')">'+fmt(l,2)+' m</text>';
+  // Etiquetas de dimensiones (fuera del rectángulo)
+  html += '<text x="'+(offsetX+pW/2)+'" y="'+(offsetY-10)+'" text-anchor="middle" font-size="11" font-weight="bold" fill="#004B87">'+fmt(a,2)+' m (ancho)</text>';
+  html += '<text x="'+(offsetX-15)+'" y="'+(offsetY+pH/2)+'" text-anchor="middle" font-size="11" font-weight="bold" fill="#004B87" transform="rotate(-90 '+(offsetX-15)+' '+(offsetY+pH/2)+')">'+fmt(l,2)+' m (largo)</text>';
   
+  // Líneas transversales (horizontales) — usan offsetX/offsetY/pW/pH
   var yAcum = 0;
   for(var i=0; i<=previewState.distanciasTransv.length; i++){
-    var y = margen.top + (yAcum/sumaT)*pH;
+    var y = offsetY + (yAcum/sumaT)*pH;
     var activa = previewState.lineasActivas.transv[i] !== false;
     var color = activa ? "#004B87" : "#cfd8dc";
     var strokeW = activa ? 2.5 : 1.5;
     var dash = activa ? "" : "4 3";
-    html += '<line x1="'+margen.left+'" y1="'+y+'" x2="'+(margen.left+pW)+'" y2="'+y+'" stroke="'+color+'" stroke-width="'+strokeW+'" '+(dash?'stroke-dasharray="'+dash+'"':'')+' style="cursor:pointer" onclick="toggleLineaTransv('+i+')"><title>Clic para '+(activa?'desactivar':'activar')+' esta línea transversal</title></line>';
+    html += '<line x1="'+offsetX+'" y1="'+y+'" x2="'+(offsetX+pW)+'" y2="'+y+'" stroke="'+color+'" stroke-width="'+strokeW+'" '+(dash?'stroke-dasharray="'+dash+'"':'')+' style="cursor:pointer" onclick="toggleLineaTransv('+i+')"><title>Clic para '+(activa?'desactivar':'activar')+' esta línea transversal</title></line>';
     
     var etiq = (i===0) ? "Borde" : (i===previewState.distanciasTransv.length) ? "Borde" : "T"+i;
-    html += '<text x="'+(margen.left-5)+'" y="'+(y+4)+'" text-anchor="end" font-size="9" fill="'+color+'" style="pointer-events:none">'+etiq+'</text>';
+    html += '<text x="'+(offsetX-5)+'" y="'+(y+4)+'" text-anchor="end" font-size="9" fill="'+color+'" style="pointer-events:none">'+etiq+'</text>';
     
     if(i < previewState.distanciasTransv.length) yAcum += previewState.distanciasTransv[i];
   }
   
+  // Líneas longitudinales (verticales)
   var xAcum = 0;
   for(var j=0; j<=previewState.distanciasLong.length; j++){
-    var x = margen.left + (xAcum/sumaL)*pW;
+    var x = offsetX + (xAcum/sumaL)*pW;
     var activa2 = previewState.lineasActivas.long[j] !== false;
     var color2 = activa2 ? "#087f5b" : "#cfd8dc";
     var strokeW2 = activa2 ? 2.5 : 1.5;
     var dash2 = activa2 ? "" : "4 3";
-    html += '<line x1="'+x+'" y1="'+margen.top+'" x2="'+x+'" y2="'+(margen.top+pH)+'" stroke="'+color2+'" stroke-width="'+strokeW2+'" '+(dash2?'stroke-dasharray="'+dash2+'"':'')+' style="cursor:pointer" onclick="toggleLineaLong('+j+')"><title>Clic para '+(activa2?'desactivar':'activar')+' esta línea longitudinal</title></line>';
+    html += '<line x1="'+x+'" y1="'+offsetY+'" x2="'+x+'" y2="'+(offsetY+pH)+'" stroke="'+color2+'" stroke-width="'+strokeW2+'" '+(dash2?'stroke-dasharray="'+dash2+'"':'')+' style="cursor:pointer" onclick="toggleLineaLong('+j+')"><title>Clic para '+(activa2?'desactivar':'activar')+' esta línea longitudinal</title></line>';
     
     var etiq2 = (j===0) ? "Borde" : (j===previewState.distanciasLong.length) ? "Borde" : "L"+j;
-    html += '<text x="'+x+'" y="'+(margen.top+pH+18)+'" text-anchor="middle" font-size="9" fill="'+color2+'" style="pointer-events:none">'+etiq2+'</text>';
+    html += '<text x="'+x+'" y="'+(offsetY+pH+18)+'" text-anchor="middle" font-size="9" fill="'+color2+'" style="pointer-events:none">'+etiq2+'</text>';
     
     if(j < previewState.distanciasLong.length) xAcum += previewState.distanciasLong[j];
   }
@@ -1127,31 +1144,45 @@ function renderTiposLosa(){
   $("badgeLosas").textContent = tiposLosa.length + (tiposLosa.length===1?" tipo":" tipos");
 }
 
+// ---------------------------------------------------------
+// MINI SVG DE TARJETAS CON PROPORCIONES CORREGIDAS
+// ---------------------------------------------------------
 function generarMiniSvgLosa(m){
   var W = 260, H = 140;
   var margen = {top: 10, right: 10, bottom: 10, left: 10};
-  var pW = W - margen.left - margen.right;
-  var pH = H - margen.top - margen.bottom;
+  var areaW = W - margen.left - margen.right;  // 240
+  var areaH = H - margen.top - margen.bottom;  // 120
+  
+  var a = m.ancho, l = m.largoRef;
+  if(!Number.isFinite(a) || a<=0) a = 1;
+  if(!Number.isFinite(l) || l<=0) l = 1;
+  
+  // Proporción real ancho:largo
+  var escala = Math.min(areaW / a, areaH / l);
+  var pW = a * escala;
+  var pH = l * escala;
+  var offsetX = margen.left + (areaW - pW) / 2;
+  var offsetY = margen.top  + (areaH - pH) / 2;
   
   var sumaL = m.distanciasLong.reduce(function(a,b){return a+b;},0) || 1;
   var sumaT = m.distanciasTransv.reduce(function(a,b){return a+b;},0) || 1;
   
   var html = '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet" style="width:100%;height:auto">';
-  html += '<rect x="'+margen.left+'" y="'+margen.top+'" width="'+pW+'" height="'+pH+'" fill="#f0f7f2" stroke="#90a4ae" stroke-width="1" rx="2"/>';
+  html += '<rect x="'+offsetX+'" y="'+offsetY+'" width="'+pW+'" height="'+pH+'" fill="#f0f7f2" stroke="#90a4ae" stroke-width="1" rx="2"/>';
   
   var yAcum = 0;
   for(var i=0; i<=m.distanciasTransv.length; i++){
-    var y = margen.top + (yAcum/sumaT)*pH;
+    var y = offsetY + (yAcum/sumaT)*pH;
     var activa = m.lineasTransv[i] !== false;
-    html += '<line x1="'+margen.left+'" y1="'+y+'" x2="'+(margen.left+pW)+'" y2="'+y+'" stroke="'+(activa?m.color:"#cfd8dc")+'" stroke-width="'+(activa?2:1)+'" '+(activa?'':'stroke-dasharray="3 2"')+'/>';
+    html += '<line x1="'+offsetX+'" y1="'+y+'" x2="'+(offsetX+pW)+'" y2="'+y+'" stroke="'+(activa?m.color:"#cfd8dc")+'" stroke-width="'+(activa?2:1)+'" '+(activa?'':'stroke-dasharray="3 2"')+'/>';
     if(i < m.distanciasTransv.length) yAcum += m.distanciasTransv[i];
   }
   
   var xAcum = 0;
   for(var j=0; j<=m.distanciasLong.length; j++){
-    var x = margen.left + (xAcum/sumaL)*pW;
+    var x = offsetX + (xAcum/sumaL)*pW;
     var activa2 = m.lineasLong[j] !== false;
-    html += '<line x1="'+x+'" y1="'+margen.top+'" x2="'+x+'" y2="'+(margen.top+pH)+'" stroke="'+(activa2?'#087f5b':"#cfd8dc")+'" stroke-width="'+(activa2?2:1)+'" '+(activa2?'':'stroke-dasharray="3 2"')+'/>';
+    html += '<line x1="'+x+'" y1="'+offsetY+'" x2="'+x+'" y2="'+(offsetY+pH)+'" stroke="'+(activa2?'#087f5b':"#cfd8dc")+'" stroke-width="'+(activa2?2:1)+'" '+(activa2?'':'stroke-dasharray="3 2"')+'/>';
     if(j < m.distanciasLong.length) xAcum += m.distanciasLong[j];
   }
   
@@ -1713,7 +1744,7 @@ function renderPapiro(){
   html += '<text x="'+(margen.left-8)+'" y="'+(yEje+alturaMaxVia/2)+'" text-anchor="end" font-size="11" font-weight="bold" fill="#c05621">VÍA DERECHA</text>';
   html += '<line x1="'+margen.left+'" y1="'+yEje+'" x2="'+(margen.left+pW)+'" y2="'+yEje+'" stroke="#78909c" stroke-width="2" stroke-dasharray="4 3"/>';
   
-  // Etiquetas de INICIO y FIN (extraídas del programa de ejemplo)
+  // Etiquetas de INICIO y FIN
   html += '<rect x="'+(margen.left-30)+'" y="10" width="60" height="26" fill="#fff9c4" stroke="#90a4ae" stroke-width="1" rx="3"/>';
   html += '<text x="'+margen.left+'" y="21" text-anchor="middle" font-size="8" font-weight="bold" fill="#546e7a">INICIO</text>';
   html += '<text x="'+margen.left+'" y="32" text-anchor="middle" font-size="10" font-weight="bold" fill="#004B87">'+fmtProg(pMin)+'</text>';
